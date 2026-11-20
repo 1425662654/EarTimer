@@ -18,15 +18,22 @@ enum SharedSessionStore {
     /// 指向 App Group 里的同一个 SQLite 文件。
     /// 每次调用都新建，是因为多进程访问同一个 ModelContainer 实例本身不安全，
     /// SwiftData 会在文件层做锁；建容器本身很便宜。
+    ///
+    /// 注意：App Group 不可用时（entitlements 缺失，比如未签名的 CI 构建），
+    /// 必须退回本机沙盒，否则 `ModelConfiguration(groupContainer:)` 会直接 fatalError。
     static func makeContainer() throws -> ModelContainer {
-        let schema = Schema([SessionRecord.self, DeviceProfile.self])
-        let config = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            groupContainer: .identifier(SharedDefaults.appGroup),
-            cloudKitDatabase: .none
-        )
-        return try ModelContainer(for: schema, configurations: config)
+        if StorageLocator.isAppGroupAvailable {
+            let schema = Schema([SessionRecord.self, DeviceProfile.self])
+            let config = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                groupContainer: .identifier(SharedDefaults.appGroup),
+                cloudKitDatabase: .none
+            )
+            return try ModelContainer(for: schema, configurations: config)
+        }
+        // 退回路径：与主 App 使用同一套降级逻辑，保证两端看到同一个库
+        return StorageLocator.makeContainer()
     }
 
     // MARK: - 供 AppIntent 调用（不需要 App 在运行）

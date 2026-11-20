@@ -8,24 +8,10 @@ struct EarTimerApp: App {
     @State private var stats = StatsStore()
     @State private var ble = BLEPresenceWatcher()
 
-    private let container: ModelContainer = {
-        let schema = Schema([SessionRecord.self, DeviceProfile.self])
-        let config = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            groupContainer: .identifier(SharedDefaults.appGroup),
-            cloudKitDatabase: .none
-        )
-        do {
-            return try ModelContainer(for: schema, configurations: config)
-        } catch {
-            // 落盘失败（极少见）就退回内存库，至少让 UI 可用
-            return try! ModelContainer(
-                for: schema,
-                configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-            )
-        }
-    }()
+    /// 存储位置由 StorageLocator 决定：
+    /// App Group 可用就用它（Widget 能共享），否则退回本机沙盒。
+    /// 直接写 `groupContainer:` 会在 entitlements 缺失时 fatalError，那个接不住。
+    private let container: ModelContainer = StorageLocator.makeContainer()
 
     var body: some Scene {
         WindowGroup {
