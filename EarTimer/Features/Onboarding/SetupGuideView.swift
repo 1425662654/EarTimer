@@ -16,7 +16,7 @@ struct SetupGuideView: View {
     private var steps: [GuideStep] {
         [
             GuideStep(
-                icon: "bolt.horizontal.circle",
+                icon: "airpodspro",
                 title: t(.guideStep1Title),
                 body: t(.guideStep1Body),
                 highlight: t(.guideStep1Chip)
@@ -75,40 +75,47 @@ struct SetupGuideView: View {
     }
 
     private func page(_ item: GuideStep) -> some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer(minLength: 0)
+        // 内容整体包在 ScrollView 里：
+        // 小屏（SE / mini）上正文会被系统弹窗或底部分页点挤压，超出后自动可滚，
+        // 大屏上 ScrollView 不会改变居中观感。
+        ScrollView {
+            VStack(spacing: Theme.Spacing.xl) {
+                Spacer(minLength: Theme.Spacing.xxl)
 
-            ZStack {
-                Circle()
-                    .fill(Theme.Palette.mint.opacity(0.12))
-                    .frame(width: 96, height: 96)
-                Image(systemName: item.icon)
-                    .font(.system(size: 38, weight: .medium))
-                    .foregroundStyle(Theme.Palette.mint)
+                ZStack {
+                    Circle()
+                        .fill(Theme.Palette.mint.opacity(0.12))
+                        .frame(width: 96, height: 96)
+                    Image(systemName: item.icon)
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundStyle(Theme.Palette.mint)
+                }
+
+                VStack(spacing: Theme.Spacing.m) {
+                    Text(item.title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.Palette.text)
+                        .multilineTextAlignment(.center)
+
+                    Text(item.body)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.Palette.muted)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, Theme.Spacing.xxl)
+
+                if let highlight = item.highlight {
+                    MetaChip(text: highlight, tint: Theme.Palette.amber)
+                }
+
+                Spacer(minLength: Theme.Spacing.xl)
             }
-
-            VStack(spacing: Theme.Spacing.m) {
-                Text(item.title)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Theme.Palette.text)
-                    .multilineTextAlignment(.center)
-
-                Text(item.body)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.Palette.muted)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(5)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, Theme.Spacing.xxl)
-
-            if let highlight = item.highlight {
-                MetaChip(text: highlight, tint: Theme.Palette.amber)
-            }
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 420)
         }
-        .frame(maxWidth: .infinity)
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var footer: some View {
