@@ -1,0 +1,61 @@
+name: Debug XcodeGen
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  debug:
+    name: 定位 XcodeGen 报错
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 版本
+        run: xcodegen --version
+
+      - name: 目录结构
+        working-directory: EarTimer
+        run: |
+          echo "=== 当前目录 ==="
+          pwd
+          ls -la
+          echo "=== 各 sources 路径是否存在 ==="
+          for p in Shared EarTimer EarTimerWidgets; do
+            if [ -d "$p" ]; then
+              echo "OK   $p  ($(find "$p" -name '*.swift' | wc -l | tr -d ' ') swift 文件)"
+            else
+              echo "MISS $p"
+            fi
+          done
+
+      - name: 直接跑 xcodegen（捕获完整错误）
+        working-directory: EarTimer
+        run: |
+          set +e
+          xcodegen generate --verbose 2>&1 | tee /tmp/xcodegen.log
+          CODE=$?
+          echo "================ exit=$CODE ================"
+          echo "=== 完整输出 ==="
+          cat /tmp/xcodegen.log
+          echo "=== 错误行 ==="
+          grep -inE "error|invalid|failed|missing|invalid spec|unknown" /tmp/xcodegen.log || echo "(无匹配)"
+          exit $CODE
+
+      - name: 若成功，列出 target
+        working-directory: EarTimer
+        if: success()
+        run: xcodebuild -project EarTimer.xcodeproj -list
+
+      - name: 上传日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodegen-log
+          path: /tmp/xcodegen.log
+          retention-days: 7
