@@ -1,7 +1,7 @@
 name: Build iOS
 
 # 没有 Mac 也能出 .ipa：GitHub 提供 macOS 运行器，自带 Xcode。
-# 免费额度：公开仓库无限，私有仓库每月 2000 分钟（macOS 按 10 倍计费 = 200 分钟）。
+# 公开仓库免费无限量；私有仓库每月 2000 分钟（macOS 按 10 倍计 ≈ 200 分钟）。
 on:
   push:
     branches: [main]
@@ -9,15 +9,10 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: '构建类型'
-        required: true
-        default: 'unsigned'
-        type: choice
-        options:
-          - unsigned     # 不签名，产出未签名 .ipa（可自签后装）
-          - simulator    # 只验证能编译，产出 .app
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,30 +20,42 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
 
+    env:
+      # 这些设置让工程在「没有任何签名证书」的 CI 环境里也能编译
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGNING_REQUIRED: "NO"
+      CODE_SIGNING_ALLOWED: "NO"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 显示工具链版本
+      - name: 工具链版本
         run: |
           sw_vers
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
+          echo "---"
+          xcrun --sdk iphoneos --show-sdk-version || true
 
       - name: 安装 XcodeGen
-        run: brew install xcodegen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
 
       - name: 生成工程
+        working-directory: EarTimer
         run: |
-          cd EarTimer
           xcodegen generate
-          ls -la
+          echo "--- 生成的 target ---"
+          xcodebuild -project EarTimer.xcodeproj -list
 
-      # 关键一步：不依赖任何签名，先把「能不能编译」验证掉。
-      # 这一步失败 = 代码有问题；通过 = 代码可编译，只是还没签名。
+      # 关键步骤：不依赖签名，先验证「能不能编译」。
+      # 这一步失败 = 代码有问题；通过 = 可编译，只差签名。
       - name: 编译（不签名）
+        working-directory: EarTimer
         run: |
-          cd EarTimer
           set -o pipefail
           xcodebuild \
             -project EarTimer.xcodeproj \
@@ -60,45 +67,64 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
             build \
-            2>&1 | tee build.log | xcpretty || {
-              echo "===== 编译失败，完整日志见下 ====="
-              tail -200 build.log
+            > build.log 2>&1 || {
+              echo "::error::编译失败，错误摘要见下"
+              echo "================ 错误 ================"
+              grep -E "error:" build.log | head -60 || true
+              echo "================ 末尾 80 行 ================"
+              tail -80 build.log
               exit 1
             }
+          echo "编译成功"
+          tail -5 build.log
 
-      - name: 打包成未签名 .ipa
-        if: github.event.inputs.build_type != 'simulator'
+      - name: 定位产物
+        id: locate
+        working-directory: EarTimer
         run: |
-          cd EarTimer
-          APP="build/DerivedData/Build/Products/Release-iphoneos/EarTimer.app"
-          if [ ! -d "$APP" ]; then
-            echo "找不到 .app，列出产物："
-            find build/DerivedData/Build/Products -maxdepth 2 -name "*.app"
+          APP=$(find build/DerivedData/Build/Products -maxdepth 3 -name "EarTimer.app" -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::找不到 EarTimer.app"
+            find build/DerivedData/Build/Products -maxdepth 3 -name "*.app" || true
             exit 1
           fi
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "找到：$APP"
+          ls -la "$APP" | head -20
+
+      - name: 打包未签名 .ipa
+        working-directory: EarTimer
+        run: |
+          APP="${{ steps.locate.outputs.app }}"
+          rm -rf build/Payload
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
           cd build
-          zip -qr EarTimer-unsigned.ipa Payload
+          zip -qry EarTimer-unsigned.ipa Payload
           ls -lh EarTimer-unsigned.ipa
+          # 校验 zip 结构
+          unzip -l EarTimer-unsigned.ipa | head -10
 
-      - name: 上传产物
+      - name: 上传 .ipa
         uses: actions/upload-artifact@v4
         with:
-          name: EarTimer-build
-          path: |
-            EarTimer/build/EarTimer-unsigned.ipa
-            EarTimer/build/DerivedData/Build/Products/Release-iphoneos/*.app
-            EarTimer/build.log
+          name: EarTimer-ipa
+          path: EarTimer/build/EarTimer-unsigned.ipa
           retention-days: 14
-          if-no-files-found: warn
 
-      - name: 编译日志（失败时）
-        if: failure()
+      - name: 上传 .app（备用）
+        uses: actions/upload-artifact@v4
+        with:
+          name: EarTimer-app
+          path: ${{ steps.locate.outputs.app }}
+          retention-days: 14
+
+      - name: 上传编译日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: EarTimer/build.log
           retention-days: 7
+          if-no-files-found: ignore
