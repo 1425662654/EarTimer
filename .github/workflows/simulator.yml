@@ -35,9 +35,17 @@ jobs:
       - name: 选 iPhone 模拟器
         id: pick
         run: |
+          # 先确保 CoreSimulator 服务起来，否则首次调用容易超时
+          xcrun simctl list runtimes > /dev/null 2>&1 || true
           UDID=$(python3 scripts/pick_simulator.py)
+          if [ -z "$UDID" ]; then
+            echo "::error::没拿到模拟器 UDID"
+            xcrun simctl list devices available | head -40
+            exit 1
+          fi
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "选中: $UDID"
+          xcrun simctl list devices | grep -i "$UDID" || true
 
       - name: 编译（模拟器 Debug）
         run: |
