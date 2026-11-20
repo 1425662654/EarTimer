@@ -1,0 +1,131 @@
+name: Simulator Build
+
+# 不需要任何设备：在 macOS 模拟器上真实启动 App，验证：
+#   1. 能不能编译（模拟器 SDK）
+#   2. 启动会不会崩
+#   3. SwiftData 容器能否建起来
+#   4. 首屏能否渲染（截图存档）
+#
+# 唯一验不了的：蓝牙 / 音频路由 / 灵动岛 —— 那些必须真机。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sim-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: Run on iOS Simulator
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+
+      - name: 生成工程
+        run: xcodegen generate
+
+      - name: 选 iPhone 模拟器
+        id: pick
+        run: |
+          UDID=$(python3 scripts/pick_simulator.py)
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "选中: $UDID"
+
+      - name: 编译（模拟器 Debug）
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project EarTimer.xcodeproj \
+            -scheme EarTimer \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=${{ steps.pick.outputs.udid }}" \
+            -derivedDataPath build/SimDD \
+            CODE_SIGNING_ALLOWED=NO \
+            build > simbuild.log 2>&1 || {
+              echo "::error::模拟器编译失败"
+              grep -E "error:" simbuild.log | head -60 || true
+              tail -80 simbuild.log
+              exit 1
+            }
+          echo "编译成功"
+
+      - name: 启动模拟器
+        run: |
+          UDID="${{ steps.pick.outputs.udid }}"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b || true
+
+      - name: 安装 App
+        id: install
+        run: |
+          APP=$(find build/SimDD/Build/Products -maxdepth 3 -name "EarTimer.app" -type d | head -1)
+          test -n "$APP" || { echo "::error::找不到 .app"; exit 1; }
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          xcrun simctl install "${{ steps.pick.outputs.udid }}" "$APP"
+          echo "已安装: $APP"
+
+      - name: 启动 App 并观察是否崩溃
+        run: |
+          UDID="${{ steps.pick.outputs.udid }}"
+          xcrun simctl launch "$UDID" com.yg.eartimer > /tmp/launch.txt 2>&1 || true
+          cat /tmp/launch.txt
+          # 给 App 时间完成 SwiftData 建库和首屏渲染
+          sleep 15
+          echo "=== 进程检查 ==="
+          if xcrun simctl spawn "$UDID" launchctl list | grep -q "com.yg.eartimer"; then
+            echo "App 进程存活"
+          else
+            echo "::error::App 进程不存在，可能启动即崩溃"
+            exit 1
+          fi
+
+      - name: 截图首屏
+        run: |
+          UDID="${{ steps.pick.outputs.udid }}"
+          mkdir -p shots
+          xcrun simctl io "$UDID" screenshot --type=png shots/01-home.png
+          ls -la shots/
+
+      - name: 检查崩溃报告
+        run: |
+          DIR="$HOME/Library/Logs/DiagnosticReports"
+          FOUND=$(ls "$DIR"/EarTimer* 2>/dev/null || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::发现崩溃报告"
+            for f in $FOUND; do
+              echo "===== $f ====="
+              head -80 "$f"
+            done
+            exit 1
+          fi
+          echo "没有崩溃报告"
+
+      - name: 抓 App 日志
+        if: always()
+        run: |
+          UDID="${{ steps.pick.outputs.udid }}"
+          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "EarTimer"' > /tmp/applog.txt 2>&1 || true
+          wc -l /tmp/applog.txt
+          head -60 /tmp/applog.txt
+
+      - name: 上传产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-output
+          path: |
+            shots/
+            /tmp/applog.txt
+            /tmp/launch.txt
+            simbuild.log
+          retention-days: 14
+          if-no-files-found: ignore
