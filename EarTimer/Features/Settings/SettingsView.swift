@@ -53,6 +53,9 @@ struct SettingsView: View {
 
     private var settingsForm: some View {
         @Bindable var settings = settings
+        // @Environment(Type.self) 的对象不能直接取 $ 绑定，
+        // 必须先用 @Bindable 拿到投影，否则报 "cannot find '$lang' in scope"
+        @Bindable var lang = lang
 
         return Form {
             // 语言在最上：用户第一眼就能发现可以切
