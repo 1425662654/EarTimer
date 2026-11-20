@@ -1,0 +1,45 @@
+# ── macOS / Xcode ──
+.DS_Store
+*.xcodeproj          # XcodeGen 生成，不进仓库
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+
+# ── Swift Package Manager ──
+.build/
+.swiftpm/
+Package.resolved
+
+# ── CocoaPods / Carthage（本项目不用，防以后误提交）──
+Pods/
+Carthage/Build/
+
+# ── 代码签名 ──
+*.cer
+*.certSigningRequest
+*.p12
+*.mobileprovision
+*.provisionprofile
+ExportOptions.plist
+
+# ── 编辑器 / 系统 ──
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+
+# ── 日志与临时产物 ──
+*.log
+build.log
+test/**/__pycache__/
+__pycache__/
+*.pyc

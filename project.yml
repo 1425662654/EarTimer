@@ -1,0 +1,102 @@
+name: EarTimer
+options:
+  bundleIdPrefix: com.yg
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    # 开发时填你的 Team ID，或直接在 Xcode 里选 Personal Team
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  EarTimer:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: EarTimer
+    info:
+      path: Config/EarTimer-Info.plist
+      properties:
+        CFBundleDisplayName: EarTimer
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh_CN
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: false
+        ITSAppUsesNonExemptEncryption: false
+        NSHumanReadableCopyright: "EarTimer"
+        UIBackgroundModes:
+          - bluetooth-central
+        NSBluetoothAlwaysUsageDescription: "EarTimer 用蓝牙识别耳机连接状态，以便自动记录使用时长。不读取任何音频内容。"
+        NSBluetoothPeripheralUsageDescription: "EarTimer 用蓝牙识别耳机连接状态，以便自动记录使用时长。"
+    entitlements:
+      path: Config/EarTimer.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.yg.eartimer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yg.eartimer
+        PRODUCT_NAME: EarTimer
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+    dependencies:
+      - target: EarTimerWidgets
+        embed: true
+
+  EarTimerWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: EarTimerWidgets
+    info:
+      path: Config/EarTimerWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: EarTimer
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Config/EarTimerWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.yg.eartimer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yg.eartimer.widgets
+        PRODUCT_NAME: EarTimerWidgets
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: NO
+
+schemes:
+  EarTimer:
+    build:
+      targets:
+        EarTimer: all
+        EarTimerWidgets: all
+    run:
+      config: Debug
+    archive:
+      config: Release

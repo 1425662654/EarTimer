@@ -1,0 +1,21 @@
+# 统一用 LF —— 否则 macOS 上的 build.sh / preflight.sh 会因 CRLF 报
+# "bad interpreter: /bin/bash^M"，而 Swift 文件混用换行也可能引发 diff 噪音
+* text=auto eol=lf
+
+# 明确指定
+*.swift   text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+*.sh      text eol=lf
+*.json    text eol=lf
+*.plist   text eol=lf
+*.xcprivacy text eol=lf
+
+# 二进制，禁止任何转换
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.ipa     binary
+*.mobileprovision binary
+*.p12     binary
