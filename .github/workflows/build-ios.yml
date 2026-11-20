@@ -1,7 +1,10 @@
 name: Build iOS
 
 # 没有 Mac 也能出 .ipa：GitHub 提供 macOS 运行器，自带 Xcode。
-# 公开仓库免费无限量；私有仓库每月 2000 分钟（macOS 按 10 倍计 ≈ 200 分钟）。
+# 公开仓库免费无限量。
+#
+# ⚠️ 路径约定：本仓库根目录 = 工程目录，project.yml 就在根下。
+#    所以所有命令都在仓库根执行，不要再 cd 到子目录。
 on:
   push:
     branches: [main]
@@ -21,7 +24,6 @@ jobs:
     timeout-minutes: 30
 
     env:
-      # 这些设置让工程在「没有任何签名证书」的 CI 环境里也能编译
       CODE_SIGN_IDENTITY: ""
       CODE_SIGNING_REQUIRED: "NO"
       CODE_SIGNING_ALLOWED: "NO"
@@ -34,27 +36,24 @@ jobs:
         run: |
           sw_vers
           xcodebuild -version
-          echo "---"
           xcrun --sdk iphoneos --show-sdk-version || true
 
       - name: 安装 XcodeGen
         run: |
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
-          fi
+          command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen --version
 
       - name: 生成工程
-        working-directory: EarTimer
         run: |
+          echo "工作目录: $(pwd)"
+          ls -la project.yml
           xcodegen generate
-          echo "--- 生成的 target ---"
+          echo "--- 生成结果 ---"
+          ls -d *.xcodeproj
+          echo "--- target 列表 ---"
           xcodebuild -project EarTimer.xcodeproj -list
 
-      # 关键步骤：不依赖签名，先验证「能不能编译」。
-      # 这一步失败 = 代码有问题；通过 = 可编译，只差签名。
       - name: 编译（不签名）
-        working-directory: EarTimer
         run: |
           set -o pipefail
           xcodebuild \
@@ -69,7 +68,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build \
             > build.log 2>&1 || {
-              echo "::error::编译失败，错误摘要见下"
+              echo "::error::编译失败"
               echo "================ 错误 ================"
               grep -E "error:" build.log | head -60 || true
               echo "================ 末尾 80 行 ================"
@@ -81,7 +80,6 @@ jobs:
 
       - name: 定位产物
         id: locate
-        working-directory: EarTimer
         run: |
           APP=$(find build/DerivedData/Build/Products -maxdepth 3 -name "EarTimer.app" -type d | head -1)
           if [ -z "$APP" ]; then
@@ -91,10 +89,8 @@ jobs:
           fi
           echo "app=$APP" >> "$GITHUB_OUTPUT"
           echo "找到：$APP"
-          ls -la "$APP" | head -20
 
       - name: 打包未签名 .ipa
-        working-directory: EarTimer
         run: |
           APP="${{ steps.locate.outputs.app }}"
           rm -rf build/Payload
@@ -103,28 +99,27 @@ jobs:
           cd build
           zip -qry EarTimer-unsigned.ipa Payload
           ls -lh EarTimer-unsigned.ipa
-          # 校验 zip 结构
           unzip -l EarTimer-unsigned.ipa | head -10
 
       - name: 上传 .ipa
         uses: actions/upload-artifact@v4
         with:
           name: EarTimer-ipa
-          path: EarTimer/build/EarTimer-unsigned.ipa
+          path: build/EarTimer-unsigned.ipa
           retention-days: 14
 
-      - name: 上传 .app（备用）
+      - name: 上传 .app
         uses: actions/upload-artifact@v4
         with:
           name: EarTimer-app
           path: ${{ steps.locate.outputs.app }}
           retention-days: 14
 
-      - name: 上传编译日志
+      - name: 上传日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: EarTimer/build.log
+          path: build.log
           retention-days: 7
           if-no-files-found: ignore
