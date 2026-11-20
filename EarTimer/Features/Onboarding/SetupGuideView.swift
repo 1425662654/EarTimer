@@ -165,6 +165,9 @@ struct SetupGuideView: View {
     private func finish() {
         SharedDefaults.suite.set(true, forKey: SharedDefaults.Keys.guideCompleted)
         dismiss()
+        // 用户已经理解了「为什么要多一步」，这时候申请通知权限才有上下文，
+        // 通过率更高，也不会挡住引导内容。
+        Task { await ReminderScheduler.shared.requestAuthorization() }
     }
 }
 

@@ -27,8 +27,9 @@ struct EarTimerApp: App {
                     SessionEngine.shared.configure(context: container.mainContext, observer: observer)
                     SessionEngine.shared.start()
                     stats.refresh()
-                    await ReminderScheduler.shared.requestAuthorization()
                     startOptionalBLEChannel()
+                    // 通知授权不在这里请求 —— 会被引导页第一屏挡住。
+                    // 交给 SetupGuideView 在用户读完说明、点「完成」之后再申请。
                 }
         }
         .modelContainer(container)
