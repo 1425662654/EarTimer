@@ -7,55 +7,76 @@ on:
 
 jobs:
   debug:
-    name: 定位 XcodeGen 报错
+    name: 定位编译问题
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGNING_REQUIRED: "NO"
+      CODE_SIGNING_ALLOWED: "NO"
+
     steps:
       - uses: actions/checkout@v4
 
       - name: 安装 XcodeGen
         run: brew install xcodegen
 
-      - name: 版本
-        run: xcodegen --version
-
-      - name: 目录结构
+      - name: 生成工程
         working-directory: EarTimer
         run: |
-          echo "=== 当前目录 ==="
-          pwd
+          xcodegen generate
+          echo "=== 生成的产物 ==="
           ls -la
-          echo "=== 各 sources 路径是否存在 ==="
-          for p in Shared EarTimer EarTimerWidgets; do
-            if [ -d "$p" ]; then
-              echo "OK   $p  ($(find "$p" -name '*.swift' | wc -l | tr -d ' ') swift 文件)"
-            else
-              echo "MISS $p"
-            fi
-          done
+          echo "=== Config 目录是否生成 ==="
+          ls -la Config 2>/dev/null || echo "Config 不存在"
 
-      - name: 直接跑 xcodegen（捕获完整错误）
+      - name: 列出 target 和 scheme（不编译）
         working-directory: EarTimer
         run: |
           set +e
-          xcodegen generate --verbose 2>&1 | tee /tmp/xcodegen.log
-          CODE=$?
-          echo "================ exit=$CODE ================"
-          echo "=== 完整输出 ==="
-          cat /tmp/xcodegen.log
-          echo "=== 错误行 ==="
-          grep -inE "error|invalid|failed|missing|invalid spec|unknown" /tmp/xcodegen.log || echo "(无匹配)"
-          exit $CODE
+          xcodebuild -project EarTimer.xcodeproj -list 2>&1 | tee /tmp/list.log
+          echo "====== exit=$? ======"
 
-      - name: 若成功，列出 target
+      - name: 检查 Swift 文件是否被加入 target
         working-directory: EarTimer
-        if: success()
-        run: xcodebuild -project EarTimer.xcodeproj -list
+        run: |
+          echo "=== 工程里引用的 swift 文件数 ==="
+          grep -c "\.swift" EarTimer.xcodeproj/project.pbxproj || true
+          echo "=== 源码目录实际 swift 文件数 ==="
+          find Shared EarTimer EarTimerWidgets -name "*.swift" | wc -l
+          echo "=== 是否有 App Group entitlement 文件 ==="
+          find . -name "*.entitlements" || echo "无"
+
+      - name: 尝试编译（完整错误）
+        working-directory: EarTimer
+        run: |
+          set +e
+          xcodebuild \
+            -project EarTimer.xcodeproj \
+            -scheme EarTimer \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DD \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build \
+            > /tmp/build.log 2>&1
+          CODE=$?
+          echo "====== xcodebuild exit=$CODE ======"
+          echo "=== 错误行 ==="
+          grep -nE "error:|warning: .*deprecated" /tmp/build.log | head -80 || echo "(无 error 行)"
+          echo "=== 末尾 60 行 ==="
+          tail -60 /tmp/build.log
+          exit 0
 
       - name: 上传日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xcodegen-log
-          path: /tmp/xcodegen.log
+          name: debug-logs
+          path: |
+            /tmp/list.log
+            /tmp/build.log
           retention-days: 7
